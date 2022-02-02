@@ -1,11 +1,11 @@
-import os
 import socket
 import sys
 
 TIMEOUT = 3
 BUFFER_SIZE = 256
+OCTET_STRING_SIZE = 16
+DISPLAY_STRING_SIZE = 32
 SNMP_SERVICE = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-MIB_FILE = 'MIB.txt'
 
 SNMP_ERRORS = {
 	00: 'No Error',
@@ -16,13 +16,51 @@ SNMP_ERRORS = {
 	06: 'No access'
 }
 
+def check_file(path_to_file):
+	"""Check if provided mib file exists
+    	Args:
+       	 str: OID
+    	Returns:
+       	 bool: True or False
+    	"""
+	try:
+		f = open(path_to_file)
+		f.close()
+		return True
+	except IOError:
+		return False
+
+def check_octetstring_size(octet_string):
+	"""Check if octect string size is valid
+    	Args:
+       	 str: OID
+    	Returns:
+       	 bool: True or False
+    	"""
+	if len(octet_string) < OCTET_STRING_SIZE:
+		return True
+	else:
+		return False
+
+def check_displaystring_size(display_string):
+	"""Check if displaystring size is valid
+    	Args:
+       	 str: display string
+    	Returns:
+       	 bool: True or False
+    	"""
+	if len(display_string) < DISPLAY_STRING_SIZE:
+		return True
+	else:
+		return False
+
 def check_oid(oid):
 	"""Check if provided OID is valid
-    Args:
+    	Args:
        	 str: OID
-    Returns:
+    	Returns:
        	 bool: True or False
-    """
+    	"""
 	invalid_chars = '!@#$%^&*()-+?_=,<>/"'
 	if any(c in invalid_chars for c in oid) or any(c.isalpha() for c in oid):
 		return False
@@ -31,11 +69,11 @@ def check_oid(oid):
 
 def check_community(community):
 	"""Check if community string is valid: only regular chars
-    Args:
+    	Args:
        	 str: community string
-    Returns:
+    	Returns:
        	 bool: True or False
-    """
+    	"""
 	invalid_chars = '!@#$%^&*()-+?_=,.<>/"'
 	if any(char in invalid_chars for char in community):
 		return False
@@ -44,11 +82,11 @@ def check_community(community):
 
 def check_port(port):
 	"""Check if provided port is a valid TCP port
-    Args:
+    	Args:
        	 int: TCP port 
-    Returns:
+    	Returns:
        	 bool: True or False
-    """
+    	"""
 	try:
 		if int(port) > 0 and int(port) < 65535:
 			return True
@@ -59,11 +97,11 @@ def check_port(port):
 
 def check_ip_address(ipaddress):
 	"""Check if provided IP Address is a valid IPv4 Address
-    Args:
+    	Args:
        	 str: IP Address 
-    Returns:
+    	Returns:
        	 bool: True or False
-    """
+    	"""
 	try:
 		socket.inet_pton(socket.AF_INET, ipaddress)
 		return True
@@ -72,32 +110,36 @@ def check_ip_address(ipaddress):
 
 class MIB:
 	"""Class that represents a MIB
-    """
-	community = None
-	port = None
-	base_oid = None
+    	"""
 	objects = {}
-	status = False
 
-	def get_community(self):
-		return self.community
+	@property
+	def file(self):
+		return self.__file
 
-	def get_port(self):
-		return self.port
+	@property
+	def community(self):
+		return self.__community
 
-	def get_base_oid(self):
-		return self.base_oid
+	@property
+	def port(self):
+		return self.__port
+
+	@property
+	def base_oid(self):
+		return self.__base_oid
+
 
 	def get_objects(self):
 		return self.objects
 
 	def get_data(self, oid):
 		"""Get data from mib
-    	Args:
+    		Args:
         	 oid: object ID 
-    	Returns:
+    		Returns:
         	 str: error code and data
-        """
+        	"""
 		for k,v in self.get_objects().items():
 			if isinstance(v,dict):
 				if k == oid:
@@ -106,11 +148,11 @@ class MIB:
 
 	def get_value(self, oid):
 		"""Get current object value from mib
-    	Args:
+    		Args:
         	 oid: object ID 
-    	Returns:
+    		Returns:
         	 string: current value
-        """
+        	"""
 		for k,v in self.get_objects().items():
 			if isinstance(v,dict):
 				if k == oid:
@@ -128,7 +170,7 @@ class MIB:
 		old_value = self.get_value(oid) # get current value
 		target_oid = oid.replace(self.base_oid,'') # remove base oid from pdu
 		try:
-			file_input = open(MIB_FILE, 'r')
+			file_input = open(self.file, 'r')
 			new_content = ""
 			for line in file_input: # iterate each line in MIB file
 				tmp_line = line.rstrip() # remove whitespaces at the end of the line
@@ -139,7 +181,7 @@ class MIB:
 				else:
 					new_content += tmp_line + '\n'
 			file_input.close()
-			file_output = open(MIB_FILE, 'w')
+			file_output = open(self.file, 'w')
 			file_output.write(new_content) # write new value
 			file_output.close()
 			return '00' # OK
@@ -148,13 +190,12 @@ class MIB:
 
 	def set_data(self, oid, new_value):
 		"""Set data to mib
-    	Args:
+    		Args:
         	 oid: object ID
         	 new_value: new value to write 
-    	Returns:
+    		Returns:
         	 str: error code
-    	"""
-		#copy = self.get_objects()
+    		"""
 		try:
 			if not self.objects[oid]:
 				return '02' # Bad OID
@@ -162,6 +203,21 @@ class MIB:
 				return '04' # Read Only
 		except:
 			return '05' # General Error
+
+		if self.objects[oid]['type'] == 'Integer':
+			try:
+				int(new_value)
+			except Exception as ex:
+				return '03' # Bad Value
+
+		if self.objects[oid]['type'] == 'OctetString':
+			if not check_octetstring_size(new_value):
+				return '03' # Bad Value
+
+		if self.objects[oid]['type'] == 'DisplayString':
+			if not check_displaystring_size(new_value):
+				return '03' # Bad Value
+
 
 		result = self.write_mib(oid, new_value) # write new value to MIB file
 
@@ -173,11 +229,11 @@ class MIB:
 
 	def update_value(self, request):
 		"""Update mib value
-    	Args:
+    		Args:
         	 str: request 
-    	Returns:
+    		Returns:
         	 str: error code
-    	"""
+    		"""
 		tmp_data = request.rstrip()
 		values = str.split(tmp_data)
 
@@ -200,29 +256,25 @@ class MIB:
 		else:
 			return self.set_data(oid, values[3])
 
-
 	def get_status(self):
 		"""Check if MIB file is valid
-    	Returns:
+		Returns:
         	 bool: True is MIB is valid, False if MIB is not valid
-    	"""
-		if not self.get_community(): 
+    		"""
+		if not check_community(self.__community):
 			return False
-		if not self.get_port():
+		if not check_port(self.__port):
 			return False
 		if len(self.get_objects()) < 1:
 			return False
 		return True
 
 	def read_mib(self):
-		if not os.path.isfile(MIB_FILE):
-			print "mib.txt not found!"
-			return False
 		first = 0
 		last = 0
 		text = ""
 
-		with open(MIB_FILE,'r') as file:
+		with open(self.file,'r') as file:
 			for line in file:
 				tmp_line = line.rstrip() # remove whitespaces at the end of the line
 
@@ -235,16 +287,16 @@ class MIB:
 				try:
 					# if line start with number, is the UDP port
 					if int(values[0]) > 0 and int(values[0]) < 65535:
-						self.port = values[0]
-						self.community = values[1]
-						self.base_oid = values[2]
+						self.__port = values[0]
+						self.__community = values[1]
+						self.__base_oid = values[2]
 				except ValueError:
 					pass
 
 				try:				
 					# if line starts with a dot, is an object instance
 					if values[0][0] == ".":
-						object_oid = self.base_oid + values[0]
+						object_oid = self.__base_oid + values[0]
 						if values[1] == 'DisplayString':
 							for idx, p in enumerate(values): # get indexes of chars that belong to a string (DisplayString)
 								if '"' in p and first == 0:
@@ -261,5 +313,13 @@ class MIB:
 				except IndexError:
 					pass
 
-	def __init__(self):
+	def __init__(self, mib_file):
+		"""
+		Basic constructor
+		Args:
+		   str: path to MIB file
+		"""
+		#self.file = mib_file
+		self.__file = mib_file
 		self.read_mib()
+
