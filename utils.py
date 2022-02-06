@@ -241,6 +241,14 @@ class MIB:
 			oid = values[2]
 		except IndexError:
 			return '05' # General Error
+		
+		try:
+			if not self.objects[oid]:
+				return '02' # Bad OID
+			if not self.objects[oid]['mode'] == 'RW':
+				return '04' # Read Only
+		except:
+			return '05' # General Error
 
 		if self.objects[oid]['type'] == 'DisplayString':
 			first = 0
