@@ -4,6 +4,7 @@ Project developed during the Network Management curricular unit of the Engineeri
 
 This projects aims to implement an SNMP Agent and Manager in Python using just ```sockets``` and ```sys``` libraries.
 
+![diagram](agent.png)
 
 The SNMP Agent implements a MIB file (not following the RFC). 
 
